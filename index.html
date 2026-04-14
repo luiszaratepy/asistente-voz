@@ -426,6 +426,15 @@ textarea { resize:vertical;min-height:80px;line-height:1.5;margin-bottom:0; }
       </div>
       <span id="badge" class="badge gray">Sin configurar</span>
     </div>
+    <div style="margin-top:10px;">
+      <label>Voz del asistente</label>
+      <select id="voiceSel" style="margin-bottom:4px;">
+        <option value="">-- Cargando voces... --</option>
+      </select>
+      <button onclick="previewVoice()" style="width:100%;padding:8px;background:var(--bg);border:1px solid var(--border);border-radius:8px;font-size:13px;cursor:pointer;font-family:inherit;color:var(--accent);">
+        ▶ Preescuchar voz seleccionada
+      </button>
+    </div>
 
     <!-- Acceso a Memoria -->
     <div class="section">
@@ -521,7 +530,7 @@ function showScreen(id) {
 // ════════════════════════════════════════════════════
 const DEFAULT_KEY = '';
 
-let API_KEY='', MODEL='llama-3.3-70b-versatile', LANG='es-PY';
+let API_KEY='', MODEL='llama-3.3-70b-versatile', LANG='es-PY', VOICE_NAME='';
 let AI_NAME='Asistente', USER_NAME='', PERSONALITY='';
 let memories=[], history=[], resumen='';
 
@@ -544,6 +553,7 @@ window.addEventListener('DOMContentLoaded', () => {
   API_KEY     = ls('groq_key')    || DEFAULT_KEY;
   MODEL       = ls('groq_model')  || 'llama-3.3-70b-versatile';
   LANG        = ls('groq_lang')   || 'es-PY';
+  VOICE_NAME  = ls('voice_name')  || '';
   AI_NAME     = ls('ai_name')     || 'Asistente';
   USER_NAME   = ls('user_name')   || '';
   PERSONALITY = ls('personality') || defPersonality();
@@ -565,6 +575,7 @@ window.addEventListener('DOMContentLoaded', () => {
   document.getElementById('personality').value = PERSONALITY;
 
   if (API_KEY.startsWith('gsk_')) setBadge(true);
+  populateVoices();
   updateHeader(); updateMemCount();
   window.speechSynthesis?.getVoices();
 });
@@ -599,7 +610,9 @@ function saveConfig() {
 
   if (!API_KEY.startsWith('gsk_') || API_KEY.length < 20) { setBadge(false); return; }
 
+  VOICE_NAME = document.getElementById('voiceSel').value;
   lsSet('groq_key', API_KEY); lsSet('groq_model', MODEL); lsSet('groq_lang', LANG);
+  lsSet('voice_name', VOICE_NAME);
   lsSet('ai_name', AI_NAME); lsSet('user_name', USER_NAME); lsSet('personality', PERSONALITY);
   setBadge(true); updateHeader(); updateMemCount();
   showScreen('chatScreen');
@@ -788,9 +801,15 @@ function tts(text, onStart, onEnd) {
   const utt   = new SpeechSynthesisUtterance(clean);
   utt.lang = LANG; utt.rate = 0.92; utt.pitch = 1.05;
   const voices = window.speechSynthesis.getVoices();
-  const v = voices.find(v => v.lang === LANG && v.localService)
-         || voices.find(v => v.lang.startsWith(LANG.slice(0,2)) && v.localService)
-         || voices.find(v => v.lang.startsWith(LANG.slice(0,2)));
+  let v = null;
+  if (VOICE_NAME) {
+    v = voices.find(v => v.name === VOICE_NAME);
+  }
+  if (!v) {
+    v = voices.find(v => v.lang === LANG && v.localService)
+      || voices.find(v => v.lang.startsWith(LANG.slice(0,2)) && v.localService)
+      || voices.find(v => v.lang.startsWith(LANG.slice(0,2)));
+  }
   if (v) utt.voice = v;
   utt.onstart = onStart; utt.onend = utt.onerror = onEnd;
   onStart?.();
@@ -947,7 +966,36 @@ async function vsProcess(text) {
   }
 }
 
-if (window.speechSynthesis) window.speechSynthesis.onvoiceschanged = ()=>window.speechSynthesis.getVoices();
+function populateVoices() {
+  const sel = document.getElementById('voiceSel');
+  if (!sel) return;
+  const voices = window.speechSynthesis.getVoices();
+  if (!voices.length) return;
+  sel.innerHTML = '<option value="">-- Automática (idioma seleccionado) --</option>';
+  voices.forEach(v => {
+    const opt = document.createElement('option');
+    opt.value = v.name;
+    opt.textContent = v.name + ' (' + v.lang + (v.localService ? ', local' : ', online') + ')';
+    if (v.name === VOICE_NAME) opt.selected = true;
+    sel.appendChild(opt);
+  });
+}
+
+function previewVoice() {
+  const sel = document.getElementById('voiceSel');
+  const voiceName = sel.value;
+  const voices = window.speechSynthesis.getVoices();
+  window.speechSynthesis.cancel();
+  const utt = new SpeechSynthesisUtterance('Hola, soy tu asistente de voz. ¿Cómo estás?');
+  utt.lang = LANG; utt.rate = 0.92; utt.pitch = 1.0;
+  if (voiceName) {
+    const v = voices.find(v => v.name === voiceName);
+    if (v) utt.voice = v;
+  }
+  window.speechSynthesis.speak(utt);
+}
+
+if (window.speechSynthesis) window.speechSynthesis.onvoiceschanged = () => { window.speechSynthesis.getVoices(); populateVoices(); };
 </script>
 
 <script>

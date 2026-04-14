@@ -794,26 +794,37 @@ async function callGroq(extraMessages) {
 // ════════════════════════════════════════════════════
 //  TTS nativo
 // ════════════════════════════════════════════════════
+function getVoice() {
+  const voices = window.speechSynthesis.getVoices();
+  if (VOICE_NAME) {
+    const v = voices.find(v => v.name === VOICE_NAME);
+    if (v) return v;
+  }
+  return voices.find(v => v.lang === LANG && v.localService)
+      || voices.find(v => v.lang.startsWith(LANG.slice(0,2)) && v.localService)
+      || voices.find(v => v.lang.startsWith(LANG.slice(0,2)))
+      || null;
+}
+
 function tts(text, onStart, onEnd) {
   if (!window.speechSynthesis) { onEnd?.(); return; }
   window.speechSynthesis.cancel();
   const clean = text.replace(/[*_`#>]/g, '');
-  const utt   = new SpeechSynthesisUtterance(clean);
-  utt.lang = LANG; utt.rate = 0.92; utt.pitch = 1.05;
-  const voices = window.speechSynthesis.getVoices();
-  let v = null;
-  if (VOICE_NAME) {
-    v = voices.find(v => v.name === VOICE_NAME);
+  const speak = () => {
+    const utt = new SpeechSynthesisUtterance(clean);
+    utt.lang = LANG; utt.rate = 0.92; utt.pitch = 1.05;
+    const v = getVoice();
+    if (v) utt.voice = v;
+    utt.onstart = onStart; utt.onend = utt.onerror = onEnd;
+    onStart?.();
+    window.speechSynthesis.speak(utt);
+  };
+  // si las voces aún no cargaron, esperar un momento
+  if (window.speechSynthesis.getVoices().length === 0) {
+    setTimeout(speak, 500);
+  } else {
+    speak();
   }
-  if (!v) {
-    v = voices.find(v => v.lang === LANG && v.localService)
-      || voices.find(v => v.lang.startsWith(LANG.slice(0,2)) && v.localService)
-      || voices.find(v => v.lang.startsWith(LANG.slice(0,2)));
-  }
-  if (v) utt.voice = v;
-  utt.onstart = onStart; utt.onend = utt.onerror = onEnd;
-  onStart?.();
-  window.speechSynthesis.speak(utt);
 }
 
 function stopTts() { window.speechSynthesis?.cancel(); }
@@ -969,13 +980,18 @@ async function vsProcess(text) {
 function populateVoices() {
   const sel = document.getElementById('voiceSel');
   if (!sel) return;
-  const voices = window.speechSynthesis.getVoices();
+  let voices = window.speechSynthesis.getVoices();
   if (!voices.length) return;
+  // ordenar: primero español, luego el resto
+  voices = [
+    ...voices.filter(v => v.lang.startsWith('es')),
+    ...voices.filter(v => !v.lang.startsWith('es'))
+  ];
   sel.innerHTML = '<option value="">-- Automática (idioma seleccionado) --</option>';
   voices.forEach(v => {
     const opt = document.createElement('option');
     opt.value = v.name;
-    opt.textContent = v.name + ' (' + v.lang + (v.localService ? ', local' : ', online') + ')';
+    opt.textContent = v.name + ' (' + v.lang + (v.localService ? ' ✓local' : ' online') + ')';
     if (v.name === VOICE_NAME) opt.selected = true;
     sel.appendChild(opt);
   });
@@ -995,7 +1011,19 @@ function previewVoice() {
   window.speechSynthesis.speak(utt);
 }
 
-if (window.speechSynthesis) window.speechSynthesis.onvoiceschanged = () => { window.speechSynthesis.getVoices(); populateVoices(); };
+// cargar voces con reintentos — Android tarda en inicializarlas
+function loadVoicesWithRetry(attempts) {
+  const voices = window.speechSynthesis.getVoices();
+  if (voices.length) {
+    populateVoices();
+  } else if (attempts > 0) {
+    setTimeout(() => loadVoicesWithRetry(attempts - 1), 300);
+  }
+}
+if (window.speechSynthesis) {
+  window.speechSynthesis.onvoiceschanged = () => { loadVoicesWithRetry(5); };
+  loadVoicesWithRetry(10);
+}
 </script>
 
 <script>

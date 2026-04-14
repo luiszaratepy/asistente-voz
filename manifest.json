@@ -2,7 +2,7 @@
   "name": "Asistente de Voz",
   "short_name": "Asistente",
   "description": "Tu asistente de voz personal con IA",
-  "start_url": "/index.html",
+  "start_url": "/asistente-voz/index.html",
   "display": "standalone",
   "background_color": "#12121f",
   "theme_color": "#7F77DD",

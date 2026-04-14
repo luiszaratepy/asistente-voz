@@ -1,5 +1,8 @@
 const CACHE = 'asistente-v1';
-const ASSETS = ['/', '/index.html'];
+const ASSETS = [
+  '/asistente-voz/',
+  '/asistente-voz/index.html'
+];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)));
@@ -14,9 +17,10 @@ self.addEventListener('activate', e => {
 });
 
 self.addEventListener('fetch', e => {
-  // peticiones a API siempre van a la red
   if (e.request.url.includes('groq.com')) return;
   e.respondWith(
-    caches.match(e.request).then(cached => cached || fetch(e.request).catch(() => caches.match('/index.html')))
+    caches.match(e.request).then(cached => 
+      cached || fetch(e.request).catch(() => caches.match('/asistente-voz/index.html'))
+    )
   );
 });

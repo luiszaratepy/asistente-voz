@@ -376,7 +376,7 @@ textarea { resize:vertical;min-height:80px;line-height:1.5;margin-bottom:0; }
     <div class="topbar-left">
       <span class="topbar-title">Configuración</span>
     </div>
-    <span style="font-size:12px;color:var(--muted);font-weight:500;">v0.1.4</span>
+    <span style="font-size:12px;color:var(--muted);font-weight:500;">v0.1.5</span>
     <button class="icon-btn" onclick="showScreen('chatScreen')" title="Volver">
       <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
     </button>
@@ -433,10 +433,10 @@ textarea { resize:vertical;min-height:80px;line-height:1.5;margin-bottom:0; }
           <span id="geminiStatus" class="badge gray" style="margin-left:auto;font-size:11px;">—</span>
         </div>
         <label>API Key</label>
-        <input type="password" id="geminiKey" placeholder="AIza..."/>
+        <input type="password" id="geminiApiKeyInput" placeholder="AIza..."/>
         <label>Modelo</label>
         <select id="geminiModel">
-          <option value="gemini-1.5-flash-8b">Gemini 1.5 Flash 8B (recomendado — menos tokens)</option>
+          <option value="gemini-1.5-flash">Gemini 1.5 Flash (recomendado)</option>
           <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
           <option value="gemini-1.5-pro">Gemini 1.5 Pro (más potente)</option>
         </select>
@@ -659,15 +659,15 @@ window.addEventListener('DOMContentLoaded', () => {
   // ── Proveedores ────────────────────────────────────
   PROVIDERS.groq.key          = ls('groq_key')          || '';
   PROVIDERS.groq.model        = ls('groq_model')        || 'llama-3.1-8b-instant';
-  PROVIDERS.gemini.key        = ls('gemini_key')        || '';
-  PROVIDERS.gemini.model      = ls('gemini_model')      || 'gemini-1.5-flash-8b';
+  PROVIDERS.gemini.key        = ls('gemini_api_key')    || '';
+  PROVIDERS.gemini.model      = ls('gemini_model')      || 'gemini-1.5-flash';
   PROVIDERS.openrouter.key    = ls('openrouter_key')    || '';
   PROVIDERS.openrouter.model  = ls('openrouter_model')  || 'meta-llama/llama-3.2-3b-instruct:free';
   PROVIDER_PREF               = ls('provider_pref')     || 'auto';
 
   document.getElementById('groqKey').value          = PROVIDERS.groq.key;
   document.getElementById('groqModel').value         = PROVIDERS.groq.model;
-  document.getElementById('geminiKey').value         = PROVIDERS.gemini.key;
+  document.getElementById('geminiApiKeyInput').value  = PROVIDERS.gemini.key;
   document.getElementById('geminiModel').value       = PROVIDERS.gemini.model;
   document.getElementById('openrouterKey').value     = PROVIDERS.openrouter.key;
   document.getElementById('openrouterModel').value   = PROVIDERS.openrouter.model;
@@ -724,7 +724,7 @@ function renderSavedHistory() {
 function saveConfig() {
   PROVIDERS.groq.key         = document.getElementById('groqKey').value.trim();
   PROVIDERS.groq.model       = document.getElementById('groqModel').value;
-  PROVIDERS.gemini.key       = document.getElementById('geminiKey').value.trim();
+  PROVIDERS.gemini.key       = document.getElementById('geminiApiKeyInput').value.trim();
   PROVIDERS.gemini.model     = document.getElementById('geminiModel').value;
   PROVIDERS.openrouter.key   = document.getElementById('openrouterKey').value.trim();
   PROVIDERS.openrouter.model = document.getElementById('openrouterModel').value;
@@ -733,7 +733,7 @@ function saveConfig() {
 
   lsSet('groq_key',         PROVIDERS.groq.key);
   lsSet('groq_model',       PROVIDERS.groq.model);
-  lsSet('gemini_key',       PROVIDERS.gemini.key);
+  lsSet('gemini_api_key',   PROVIDERS.gemini.key);
   lsSet('gemini_model',     PROVIDERS.gemini.model);
   lsSet('openrouter_key',   PROVIDERS.openrouter.key);
   lsSet('openrouter_model', PROVIDERS.openrouter.model);
@@ -961,8 +961,7 @@ async function callProvider(provider, msgs) {
   let url, model, authKey;
 
   if (provider === 'gemini') {
-    // Gemini usa endpoint compatible con OpenAI + key como query param
-    url     = `https://generativelanguage.googleapis.com/v1beta/openai/chat/completions?key=${p.key}`;
+    url     = 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions?key=' + p.key;
     model   = 'gemini-1.5-flash';
     authKey = p.key;
   } else if (provider === 'groq') {
@@ -995,9 +994,10 @@ async function callProvider(provider, msgs) {
   if (res.status === 429) throw new Error('RATE_LIMIT');
 
   if (!res.ok) {
-    const errBody = await res.json().catch(() => ({}));
-    console.error(`[${provider}] HTTP ${res.status}:`, errBody);
-    throw new Error(`${provider} error ${res.status}: ${errBody?.error?.message || res.statusText}`);
+    const errorData = await res.json().catch(() => ({}));
+    console.error('Detalle del error 404/400:', errorData);
+    console.error(`[${provider}] HTTP ${res.status} - URL: ${url} - Modelo: ${model}`);
+    throw new Error(`${provider} error ${res.status}: ${errorData?.error?.message || res.statusText}`);
   }
 
   const d = await res.json();

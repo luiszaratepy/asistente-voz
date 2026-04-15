@@ -328,7 +328,7 @@ textarea { resize:vertical;min-height:80px;line-height:1.5;margin-bottom:0; }
     <div class="topbar-left">
       <span class="topbar-title">Configuración</span>
     </div>
-    <span style="font-size:12px;color:var(--muted);font-weight:500;">v0.1.6.5</span>
+    <span style="font-size:12px;color:var(--muted);font-weight:500;">v0.1.6.6</span>
     <button class="icon-btn" onclick="showScreen('chatScreen')" title="Volver">
       <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
     </button>
@@ -813,8 +813,6 @@ function sendText() {
 // ════════════════════════════════════════════════════
 //  LLAMADA A LA API — multi-proveedor con fallback
 // ════════════════════════════════════════════════════
-
-
 async function callProvider(provider) {
   const p = PROVIDERS[provider];
   if (!p.key) throw new Error('NO_KEY');
@@ -822,38 +820,42 @@ async function callProvider(provider) {
   let url, headers, body;
 
   if (provider === 'gemini') {
+    // ENDPOINT NATIVO DE GOOGLE - NO DA 400
     url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${p.key.trim()}`;
-    headers = { 'Content-Type': 'application/json' }; // Sin Authorization
+    headers = { 'Content-Type': 'application/json' };
 
     const systemPrompt = buildSystem();
     let contents = [];
 
-    if (history.length > 0) {
-      contents.push({ role: 'user', parts: [{ text: systemPrompt }] });
-      contents.push({ role: 'model', parts: [{ text: 'Entendido.' }] });
-    }
-
-    history.forEach(msg => {
-      contents.push({
-        role: msg.role === 'assistant'? 'model' : 'user',
-        parts: [{ text: msg.content }]
-      });
-    });
-
+    // Gemini no tiene role:system, se simula como primer turno
     if (history.length === 0) {
       contents.push({ role: 'user', parts: [{ text: systemPrompt }] });
+    } else {
+      contents.push({ role: 'user', parts: [{ text: systemPrompt }] });
+      contents.push({ role: 'model', parts: [{ text: 'Entendido.' }] });
+      history.forEach(m => {
+        contents.push({
+          role: m.role === 'assistant'? 'model' : 'user',
+          parts: [{ text: m.content }]
+        });
+      });
     }
 
     body = {
       contents: contents,
       generationConfig: {
         temperature: 0.75,
-        maxOutputTokens: 300
+        maxOutputTokens: 300,
+        topP: 0.95,
+        topK: 40
       }
     };
   } else if (provider === 'groq') {
     url = 'https://api.groq.com/openai/v1/chat/completions';
-    headers = { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + p.key };
+    headers = {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ' + p.key
+    };
     body = {
       model: p.model || 'llama-3.1-8b-instant',
       max_tokens: 300,
@@ -889,6 +891,7 @@ async function callProvider(provider) {
 
   const d = await res.json();
 
+  // Parseo de respuesta específico por provider
   if (provider === 'gemini') {
     if (d.error) throw new Error(`Gemini: ${d.error.message}`);
     const text = d.candidates?.[0]?.content?.parts?.[0]?.text;
@@ -896,9 +899,12 @@ async function callProvider(provider) {
     return text.trim();
   }
 
+  // Groq y OpenRouter usan formato OpenAI
   if (d.error) throw new Error(d.error.message || 'Error desconocido');
+  if (!d.choices?.[0]?.message?.content) throw new Error('Respuesta vacía');
   return d.choices[0].message.content.trim();
 }
+
 
 
 

@@ -387,8 +387,8 @@ textarea { resize:vertical;min-height:80px;line-height:1.5;margin-bottom:0; }
         <input type="password" id="gemini_api_key" placeholder="AIza..."/>
         <label>Modelo</label>
         <select id="gemini_model">
-          <option value="gemini-2.0-flash">Gemini 2.0 Flash (recomendado)</option>
-          <option value="gemini-2.5-flash-preview-04-17">Gemini 2.5 Flash Preview (más potente)</option>
+          <option value="gemini-2.5-flash">Gemini 2.5 Flash (recomendado)</option>
+          <option value="gemini-2.5-pro">Gemini 2.5 Pro (más potente)</option>
           <option value="gemini-2.0-flash-lite">Gemini 2.0 Flash Lite (más liviano)</option>
         </select>
       </div>
@@ -560,7 +560,7 @@ let AI_PROVIDER = 'auto'; // preferencia
 
 let PROVIDERS = {
   groq:       { key: '', model: 'llama-3.1-8b-instant',                  exhausted: false },
-  gemini:     { key: '', model: 'gemini-2.0-flash',                      exhausted: false },
+  gemini:     { key: '', model: 'gemini-2.5-flash',                      exhausted: false },
   openrouter: { key: '', model: 'meta-llama/llama-3.2-3b-instruct:free', exhausted: false }
 };
 let ACTIVE_PROVIDER = '';
@@ -598,11 +598,12 @@ window.addEventListener('DOMContentLoaded', () => {
   PROVIDERS.groq.key          = ls('groq_api_key')       || '';
   PROVIDERS.groq.model        = ls('groq_model')         || 'llama-3.1-8b-instant';
   PROVIDERS.gemini.key        = ls('gemini_api_key')     || '';
-  PROVIDERS.gemini.model      = ls('gemini_model')       || 'gemini-2.0-flash';
-  // Migrar modelos Gemini deprecados
-  if (['gemini-1.5-flash','gemini-1.5-pro'].includes(PROVIDERS.gemini.model)) {
-    PROVIDERS.gemini.model = 'gemini-2.0-flash';
-    lsSet('gemini_model', 'gemini-2.0-flash');
+  PROVIDERS.gemini.model      = ls('gemini_model')       || 'gemini-2.5-flash';
+  // Migrar modelos Gemini deprecados automáticamente
+  const DEPRECATED_GEMINI = ['gemini-1.5-flash','gemini-1.5-pro','gemini-2.0-flash','gemini-2.0-flash-001'];
+  if (DEPRECATED_GEMINI.includes(PROVIDERS.gemini.model)) {
+    PROVIDERS.gemini.model = 'gemini-2.5-flash';
+    lsSet('gemini_model', 'gemini-2.5-flash');
   }
   PROVIDERS.openrouter.key    = ls('openrouter_api_key') || '';
   PROVIDERS.openrouter.model  = ls('openrouter_model')   || 'meta-llama/llama-3.2-3b-instruct:free';
@@ -827,7 +828,7 @@ async function callProvider(provider) {
 
   if (provider === 'gemini') {
     // ENDPOINT NATIVO DE GOOGLE - NO DA 400
-    const model = p.model || 'gemini-2.0-flash';
+    const model = p.model || 'gemini-2.5-flash';
     url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${p.key.trim()}`;
     headers = { 'Content-Type': 'application/json' };
 

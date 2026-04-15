@@ -820,47 +820,75 @@ async function callProvider(provider) {
   let url, headers, body;
 
   if (provider === 'gemini') {
-    // Endpoint OpenAI-compatible de Google — key en query param, sin Authorization
-    url = 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions?key=' + p.key;
+    // API nativa de Gemini - no usa formato OpenAI
+    url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${p.key}`;
     headers = { 'Content-Type': 'application/json' };
+
+    // Gemini no tiene rol "system". Lo metemos como primer mensaje del user + model
+    // y los roles "assistant" pasan a ser "model"
+    const systemPrompt = buildSystem();
+    const geminiHistory = [
+      { role: 'user', parts: [{ text: systemPrompt }] },
+      { role: 'model', parts: [{ text: 'Entendido. Soy tu asistente.' }] },
+     ...history.map(m => ({
+        role: m.role === 'assistant'? 'model' : 'user',
+        parts: [{ text: m.content }]
+      }))
+    ];
+
     body = {
-      model: 'gemini-1.5-flash',
-      max_tokens: 300,
-      temperature: 0.75,
-      messages: [{ role:'system', content:buildSystem() }, ...history]
+      contents: geminiHistory,
+      generationConfig: {
+        temperature: 0.75,
+        maxOutputTokens: 300
+      }
     };
   } else if (provider === 'groq') {
     url = 'https://api.groq.com/openai/v1/chat/completions';
-    headers = { 'Content-Type':'application/json', 'Authorization':'Bearer ' + p.key };
+    headers = { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + p.key };
     body = {
       model: p.model || 'llama-3.1-8b-instant',
       max_tokens: 300,
       temperature: 0.75,
-      messages: [{ role:'system', content:buildSystem() }, ...history]
+      messages: [{ role: 'system', content: buildSystem() },...history]
     };
   } else if (provider === 'openrouter') {
     url = 'https://openrouter.ai/api/v1/chat/completions';
-    headers = { 'Content-Type':'application/json', 'Authorization':'Bearer ' + p.key };
+    headers = {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ' + p.key,
+      'HTTP-Referer': 'https://asistente-voz.local', // OpenRouter lo pide
+      'X-Title': 'Asistente de Voz'
+    };
     body = {
       model: p.model || 'meta-llama/llama-3.2-3b-instruct:free',
       max_tokens: 300,
       temperature: 0.75,
-      messages: [{ role:'system', content:buildSystem() }, ...history]
+      messages: [{ role: 'system', content: buildSystem() },...history]
     };
   }
 
-  const res = await fetch(url, { method:'POST', headers, body: JSON.stringify(body) });
+  const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
 
   if (res.status === 429) throw new Error('RATE_LIMIT');
 
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({}));
     console.error('Detalle del error:', errorData);
-    console.error(`[${provider}] HTTP ${res.status} — URL: ${url} — Modelo: ${body.model}`);
+    console.error(`[${provider}] HTTP ${res.status} — URL: ${url} — Modelo: ${body.model || 'gemini-1.5-flash'}`);
     throw new Error(`${provider} HTTP ${res.status}: ${errorData?.error?.message || res.statusText}`);
   }
 
   const d = await res.json();
+
+  // Respuesta de Gemini nativo tiene estructura distinta
+  if (provider === 'gemini') {
+    if (d.error) throw new Error(d.error.message || 'Error desconocido');
+    if (!d.candidates ||!d.candidates[0]) throw new Error('Respuesta vacía de Gemini');
+    return d.candidates[0].content.parts[0].text.trim();
+  }
+
+  // Groq y OpenRouter usan formato OpenAI
   if (d.error) throw new Error(d.error.message || 'Error desconocido');
   return d.choices[0].message.content.trim();
 }

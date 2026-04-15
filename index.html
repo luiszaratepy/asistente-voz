@@ -744,7 +744,12 @@ function saveConfig() {
 function setBadge(ok) {
   const b = document.getElementById('badge');
   b.className = 'badge ' + (ok ? 'ok' : 'err');
-  b.textContent = ok ? `✓ ${AI_NAME} configurado` : '✗ Configurá al menos un proveedor';
+  if (ok) {
+    const provName = { groq:'Groq', gemini:'Gemini', openrouter:'OpenRouter' };
+    b.textContent = `✓ ${AI_NAME} — ${provName[ACTIVE_PROVIDER] || ACTIVE_PROVIDER}`;
+  } else {
+    b.textContent = '✗ Configurá al menos un proveedor';
+  }
 }
 
 function selectActiveProvider() {
@@ -774,7 +779,7 @@ function selectActiveProvider() {
   }
 
   const anyKey = PROVIDERS.groq.key || PROVIDERS.gemini.key || PROVIDERS.openrouter.key;
-  setBadge(!!anyKey);
+  setBadge(!!anyKey && !!ACTIVE_PROVIDER);
 }
 
 function updateHeader() {

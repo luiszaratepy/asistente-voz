@@ -328,7 +328,7 @@ textarea { resize:vertical;min-height:80px;line-height:1.5;margin-bottom:0; }
     <div class="topbar-left">
       <span class="topbar-title">Configuración</span>
     </div>
-    <span style="font-size:12px;color:var(--muted);font-weight:500;">v0.1.6.2</span>
+    <span style="font-size:12px;color:var(--muted);font-weight:500;">v0.1.6.3</span>
     <button class="icon-btn" onclick="showScreen('chatScreen')" title="Volver">
       <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
     </button>
@@ -824,7 +824,8 @@ async function callProvider(provider) {
     // Modelo actualizado: usar 'gemini-2.0-flash' o 'gemini-1.5-flash-latest'
     // gemini-1.5-flash sin 'latest' fue deprecado
     const geminiModel = p.model || 'gemini-2.0-flash'; // o 'gemini-1.5-flash-latest'
-    url = `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${p.key}`;
+    //url = `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${p.key}`;
+    url = `https://generativelanguage.googleapis.com/v1beta/openai/chat/completions?key=${p.key.trim()}`;
     headers = { 'Content-Type': 'application/json' };
 
     const systemPrompt = buildSystem();

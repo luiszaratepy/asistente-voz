@@ -328,7 +328,7 @@ textarea { resize:vertical;min-height:80px;line-height:1.5;margin-bottom:0; }
     <div class="topbar-left">
       <span class="topbar-title">Configuración</span>
     </div>
-    <span style="font-size:12px;color:var(--muted);font-weight:500;">v0.1.6.1</span>
+    <span style="font-size:12px;color:var(--muted);font-weight:500;">v0.1.6.2</span>
     <button class="icon-btn" onclick="showScreen('chatScreen')" title="Volver">
       <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
     </button>
@@ -633,9 +633,10 @@ window.addEventListener('DOMContentLoaded', () => {
 });
 
 // ════════════════════════════════════════════════════
-//  GUARDAR CONFIGURACIÓN
+//  GUARDAR CONFIGURACIÓN (CORREGIDO)
 // ════════════════════════════════════════════════════
 function saveConfig() {
+  // 1. Capturar valores de identidad
   AI_NAME     = document.getElementById('aiName').value.trim()      || 'Asistente';
   USER_NAME   = document.getElementById('userName').value.trim();
   PERSONALITY = document.getElementById('personality').value.trim() || defPersonality();
@@ -644,6 +645,7 @@ function saveConfig() {
   SILENCE_MS  = parseInt(document.getElementById('silence_ms').value) || 1500;
   AI_PROVIDER = document.getElementById('ai_provider').value;
 
+  // 2. Actualizar el objeto global PROVIDERS (Crucial para callAI)
   PROVIDERS.groq.key          = document.getElementById('groq_api_key').value.trim();
   PROVIDERS.groq.model        = document.getElementById('groq_model').value;
   PROVIDERS.gemini.key        = document.getElementById('gemini_api_key').value.trim();
@@ -651,34 +653,44 @@ function saveConfig() {
   PROVIDERS.openrouter.key    = document.getElementById('openrouter_api_key').value.trim();
   PROVIDERS.openrouter.model  = document.getElementById('openrouter_model').value;
 
-  // Verificar al menos un proveedor
-  const anyKey = PROVIDERS.groq.key || PROVIDERS.gemini.key || PROVIDERS.openrouter.key;
-  if (!anyKey) { setBadge(false); return; }
-
-  // Guardar TODO en localStorage
-  lsSet('aiName',           AI_NAME);
-  lsSet('userName',         USER_NAME);
-  lsSet('personality',      PERSONALITY);
-  lsSet('groq_lang',        LANG);
-  lsSet('voice_name',       VOICE_NAME);
-  lsSet('silence_ms',       SILENCE_MS);
-  lsSet('ai_provider',      AI_PROVIDER);
-  lsSet('groq_api_key',     PROVIDERS.groq.key);
-  lsSet('groq_model',       PROVIDERS.groq.model);
-  lsSet('gemini_api_key',   PROVIDERS.gemini.key);
-  lsSet('gemini_model',     PROVIDERS.gemini.model);
-  lsSet('openrouter_api_key', PROVIDERS.openrouter.key);
-  lsSet('openrouter_model', PROVIDERS.openrouter.model);
-
-  // Resetear agotamiento
+  // 3. Resetear estados de error para permitir reintento tras guardar nuevas keys
   PROVIDERS.groq.exhausted       = false;
   PROVIDERS.gemini.exhausted     = false;
   PROVIDERS.openrouter.exhausted = false;
 
-  selectActiveProvider();
-  updateHeader();
+  // 4. Verificar al menos un proveedor antes de cerrar
+  const anyKey = PROVIDERS.groq.key || PROVIDERS.gemini.key || PROVIDERS.openrouter.key;
+  if (!anyKey) { 
+    alert("Por favor, ingresa al menos una API Key.");
+    return; 
+  }
+
+  // 5. Guardar TODO en localStorage de forma persistente
+  lsSet('aiName',           AI_NAME);
+  lsSet('userName',          USER_NAME);
+  lsSet('personality',       PERSONALITY);
+  lsSet('groq_lang',         LANG);
+  lsSet('voice_name',        VOICE_NAME);
+  lsSet('silence_ms',        SILENCE_MS);
+  lsSet('ai_provider',       AI_PROVIDER);
+  lsSet('groq_api_key',      PROVIDERS.groq.key);
+  lsSet('groq_model',        PROVIDERS.groq.model);
+  lsSet('gemini_api_key',    PROVIDERS.gemini.key);
+  lsSet('gemini_model',      PROVIDERS.gemini.model);
+  lsSet('openrouter_api_key', PROVIDERS.openrouter.key);
+  lsSet('openrouter_model',  PROVIDERS.openrouter.model);
+
+  // 6. Actualizar Interfaz y Lógica
+  selectActiveProvider(); // Define cuál se usará primero ahora
+  updateHeader();         // Actualiza el nombre en la barra superior
+  
+  // Opcional: Actualizar el badge visual en la pantalla de ajustes
+  if (typeof updateProviderBadges === 'function') updateProviderBadges();
+
   showScreen('chatScreen');
-  addMsg('ai', `¡Listo! Soy ${AI_NAME}${USER_NAME ? ', hola ' + USER_NAME + '!' : '.'} ¿En qué te puedo ayudar?`);
+  
+  // Confirmación visual al usuario
+  addMsg('ai', `¡Configuración guardada! Soy ${AI_NAME}${USER_NAME ? ', hola ' + USER_NAME + '!' : '.'}`);
 }
 
 function setBadge(ok) {

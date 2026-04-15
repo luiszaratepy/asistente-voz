@@ -328,7 +328,7 @@ textarea { resize:vertical;min-height:80px;line-height:1.5;margin-bottom:0; }
     <div class="topbar-left">
       <span class="topbar-title">Configuración</span>
     </div>
-    <span style="font-size:12px;color:var(--muted);font-weight:500;">v0.1.6.4</span>
+    <span style="font-size:12px;color:var(--muted);font-weight:500;">v0.1.6.5</span>
     <button class="icon-btn" onclick="showScreen('chatScreen')" title="Volver">
       <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
     </button>
@@ -645,7 +645,7 @@ function saveConfig() {
   SILENCE_MS  = parseInt(document.getElementById('silence_ms').value) || 1500;
   AI_PROVIDER = document.getElementById('ai_provider').value;
 
-  // 2. Actualizar el objeto global PROVIDERS (Crucial para callAI)
+  // 2. Actualizar el objeto global PROVIDERS (Memoria activa)
   PROVIDERS.groq.key          = document.getElementById('groq_api_key').value.trim();
   PROVIDERS.groq.model        = document.getElementById('groq_model').value;
   PROVIDERS.gemini.key        = document.getElementById('gemini_api_key').value.trim();
@@ -653,7 +653,7 @@ function saveConfig() {
   PROVIDERS.openrouter.key    = document.getElementById('openrouter_api_key').value.trim();
   PROVIDERS.openrouter.model  = document.getElementById('openrouter_model').value;
 
-  // 3. Resetear estados de error para permitir reintento tras guardar nuevas keys
+  // 3. Resetear estados de error
   PROVIDERS.groq.exhausted       = false;
   PROVIDERS.gemini.exhausted     = false;
   PROVIDERS.openrouter.exhausted = false;
@@ -661,11 +661,12 @@ function saveConfig() {
   // 4. Verificar al menos un proveedor antes de cerrar
   const anyKey = PROVIDERS.groq.key || PROVIDERS.gemini.key || PROVIDERS.openrouter.key;
   if (!anyKey) { 
+    setBadge(false);
     alert("Por favor, ingresa al menos una API Key.");
     return; 
   }
 
-  // 5. Guardar TODO en localStorage de forma persistente
+  // 5. Guardar TODO en localStorage
   lsSet('aiName',           AI_NAME);
   lsSet('userName',          USER_NAME);
   lsSet('personality',       PERSONALITY);
@@ -681,28 +682,17 @@ function saveConfig() {
   lsSet('openrouter_model',  PROVIDERS.openrouter.model);
 
   // 6. Actualizar Interfaz y Lógica
-  selectActiveProvider(); // Define cuál se usará primero ahora
-  updateHeader();         // Actualiza el nombre en la barra superior
-  
-  // Opcional: Actualizar el badge visual en la pantalla de ajustes
+  selectActiveProvider(); 
+  updateHeader();         
+  setBadge(true); // <--- Recuperado
+
   if (typeof updateProviderBadges === 'function') updateProviderBadges();
 
   showScreen('chatScreen');
   
-  // Confirmación visual al usuario
-  addMsg('ai', `¡Configuración guardada! Soy ${AI_NAME}${USER_NAME ? ', hola ' + USER_NAME + '!' : '.'}`);
+  addMsg('ai', `¡Configuración guardada! Soy ${AI_NAME}${USER_NAME ? ', hola ' + USER_NAME + '!' : '.'} ¿En qué te puedo ayudar?`);
 }
 
-function setBadge(ok) {
-  const b = document.getElementById('badge');
-  b.className = 'badge ' + (ok ? 'ok' : 'err');
-  if (ok) {
-    const names = { groq:'Groq', gemini:'Gemini', openrouter:'OpenRouter' };
-    b.textContent = `✓ ${AI_NAME} — ${names[ACTIVE_PROVIDER] || ACTIVE_PROVIDER}`;
-  } else {
-    b.textContent = '✗ Configurá al menos un proveedor';
-  }
-}
 
 function selectActiveProvider() {
   const order = AI_PROVIDER === 'auto'
@@ -877,89 +867,83 @@ async function callProvider(provider) {
   return d.choices[0].message.content.trim();
 }
 
+
 async function callAI(userMsg) {
   if (!navigator.onLine) throw new Error("Sin conexión a internet.");
 
   const pref = ls('ai_provider') || 'auto';
-  
-  // 1. Orden de reintento: El preferido va PRIMERO
-  const providersOrder = pref === 'auto' 
+  const order = pref === 'auto' 
     ? ['groq', 'gemini', 'openrouter'] 
     : [pref, ...['groq', 'gemini', 'openrouter'].filter(p => p !== pref)];
 
   let lastError = "";
 
-  for (const pID of providersOrder) {
+  // Limpieza estricta del historial para los modelos
+  const cleanHistory = history.slice(-6).map(m => ({
+    role: m.role === 'assistant' ? 'assistant' : 'user',
+    content: m.content || ""
+  }));
+
+  for (const pID of order) {
     const p = PROVIDERS[pID];
-    
-    // Saltamos si no hay key o si ya falló en esta sesión
     if (!p || !p.key || p.exhausted) continue;
 
-    let url, headers;
-    const bodyData = {
-      model: p.model,
-      messages: [
-        { role: "system", content: PERSONALITY },
-        ...history.slice(-6),
-        { role: "user", content: userMsg }
-      ]
-    };
-
     try {
-      // 2. Configuración específica por proveedor
+      let url, headers, body;
+
       if (pID === 'gemini') {
-        // Gemini: La key va en la URL, NO en el header de Authorization
-        url = `https://generativelanguage.googleapis.com/v1beta/openai/chat/completions?key=${p.key}`;
+        url = `https://generativelanguage.googleapis.com/v1beta/openai/chat/completions?key=${p.key.trim()}`;
         headers = { "Content-Type": "application/json" };
-      } else if (pID === 'groq') {
-        url = 'https://api.groq.com/openai/v1/chat/completions';
-        headers = { 
-          "Content-Type": "application/json", 
-          "Authorization": `Bearer ${p.key.trim()}` // trim() elimina espacios accidentales
-        };
-      } else if (pID === 'openrouter') {
-        url = 'https://openrouter.ai/api/v1/chat/completions';
+        body = JSON.stringify({
+          model: p.model,
+          messages: [
+            { role: "system", content: PERSONALITY },
+            ...cleanHistory,
+            { role: "user", content: userMsg }
+          ]
+        });
+      } else {
+        url = pID === 'groq' ? 'https://api.groq.com/openai/v1/chat/completions' : 'https://openrouter.ai/api/v1/chat/completions';
         headers = { 
           "Content-Type": "application/json", 
           "Authorization": `Bearer ${p.key.trim()}` 
         };
+        body = JSON.stringify({
+          model: p.model,
+          messages: [
+            { role: "system", content: PERSONALITY },
+            ...cleanHistory,
+            { role: "user", content: userMsg }
+          ],
+          temperature: 0.7
+        });
       }
 
-      const resp = await fetch(url, {
-        method: 'POST',
-        headers: headers,
-        body: JSON.stringify(bodyData)
-      });
+      const resp = await fetch(url, { method: 'POST', headers, body });
 
       if (!resp.ok) {
-        // Si hay error, lo registramos y pasamos al siguiente proveedor
-        const errorDetail = await resp.json().catch(() => ({}));
-        console.error(`Error en ${pID}:`, errorDetail);
-        
-        if (resp.status === 401 || resp.status === 429 || resp.status === 400) {
-           // Si el error es de credenciales o cuota, lo marcamos para no repetir en este ciclo
-           p.exhausted = true; 
-        }
-        throw new Error(`Fallo ${pID}: ${resp.status}`);
+        const errorData = await resp.json().catch(() => ({}));
+        console.error(`Error en ${pID}:`, errorData);
+        if (resp.status === 401 || resp.status === 429) p.exhausted = true;
+        throw new Error(`Status ${resp.status}`);
       }
 
       const data = await resp.json();
       const text = data.choices[0].message.content;
 
-      // 3. Éxito: Guardar y retornar
       history.push({ role: "user", content: userMsg }, { role: "assistant", content: text });
       lsSet('chat_history', JSON.stringify(history));
       return text;
 
     } catch (err) {
       lastError = err.message;
-      console.warn(`Reintentando... ${pID} falló:`, lastError);
-      continue; // Salta al siguiente del providersOrder
+      console.warn(`Fallo ${pID}, intentando siguiente...`);
+      continue;
     }
   }
-
-  throw new Error(lastError || "No hay proveedores configurados correctamente.");
+  throw new Error(lastError || "Error de conexión.");
 }
+
 
 function handleApiError(err, addMsgFn, ttsFn) {
   let msg;

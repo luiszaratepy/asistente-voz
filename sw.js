@@ -1,4 +1,4 @@
-const CACHE = 'asistente-v3';
+const CACHE = 'asistente-v4';
 const ASSETS = [
   '/asistente-voz/icon-192.png',
   '/asistente-voz/icon-512.png',
@@ -18,15 +18,16 @@ self.addEventListener('activate', e => {
 });
 
 self.addEventListener('fetch', e => {
-  // API de Groq siempre va a la red
   if (e.request.url.includes('groq.com')) return;
-  // index.html siempre desde la red (nunca desde cache)
   if (e.request.url.includes('index.html') || e.request.url.endsWith('/asistente-voz/')) {
     e.respondWith(fetch(e.request).catch(() => caches.match(e.request)));
     return;
   }
-  // El resto desde cache con fallback a red
   e.respondWith(
     caches.match(e.request).then(cached => cached || fetch(e.request))
   );
+});
+
+self.addEventListener('message', e => {
+  if (e.data === 'skipWaiting') self.skipWaiting();
 });

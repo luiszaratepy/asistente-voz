@@ -328,7 +328,7 @@ textarea { resize:vertical;min-height:80px;line-height:1.5;margin-bottom:0; }
     <div class="topbar-left">
       <span class="topbar-title">Configuración</span>
     </div>
-    <span style="font-size:12px;color:var(--muted);font-weight:500;">v0.1.6.4</span>
+    <span style="font-size:12px;color:var(--muted);font-weight:500;">v0.1.6.5</span>
     <button class="icon-btn" onclick="showScreen('chatScreen')" title="Volver">
       <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
     </button>
@@ -822,43 +822,34 @@ async function callProvider(provider) {
   let url, headers, body;
 
   if (provider === 'gemini') {
-    // Endpoint OpenAI-compatible de Google
-    url = `https://generativelanguage.googleapis.com/v1beta/openai/chat/completions?key=${p.key.trim()}`;
-    headers = { 'Content-Type': 'application/json' };
+    url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${p.key.trim()}`;
+    headers = { 'Content-Type': 'application/json' }; // Sin Authorization
 
-    // Para este endpoint: modelo debe ser 'gemini-2.0-flash-001' o 'gemini-1.5-flash-001'
-    // Y NO uses role: 'system' como primer mensaje. Metele todo en el primer 'user'.
     const systemPrompt = buildSystem();
-    const messagesOpenAI = [];
+    let contents = [];
+
+    if (history.length > 0) {
+      contents.push({ role: 'user', parts: [{ text: systemPrompt }] });
+      contents.push({ role: 'model', parts: [{ text: 'Entendido.' }] });
+    }
+
+    history.forEach(msg => {
+      contents.push({
+        role: msg.role === 'assistant'? 'model' : 'user',
+        parts: [{ text: msg.content }]
+      });
+    });
 
     if (history.length === 0) {
-      // Si es el primer mensaje, metemos el system prompt junto al user
-      messagesOpenAI.push({ role: 'user', content: systemPrompt });
-    } else {
-      // Si ya hay historial, Gemini en este endpoint no quiere 'system'.
-      // Lo convertimos: primer mensaje del user lleva el system + la primera pregunta
-      const firstUser = history.find(m => m.role === 'user');
-      const restHistory = history.slice(history.indexOf(firstUser));
-
-      messagesOpenAI.push({
-        role: 'user',
-        content: `${systemPrompt}\n\n${firstUser.content}`
-      });
-
-      // Agregamos el resto del historial sin el primer user que ya metimos
-      restHistory.slice(1).forEach(m => {
-        messagesOpenAI.push({
-          role: m.role === 'assistant'? 'assistant' : 'user',
-          content: m.content
-        });
-      });
+      contents.push({ role: 'user', parts: [{ text: systemPrompt }] });
     }
 
     body = {
-      model: 'gemini-2.0-flash-001', // IMPORTANTE: con -001 al final
-      max_tokens: 300,
-      temperature: 0.75,
-      messages: messagesOpenAI
+      contents: contents,
+      generationConfig: {
+        temperature: 0.75,
+        maxOutputTokens: 300
+      }
     };
   } else if (provider === 'groq') {
     url = 'https://api.groq.com/openai/v1/chat/completions';
@@ -892,14 +883,23 @@ async function callProvider(provider) {
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({}));
     console.error('Detalle del error:', errorData);
-    console.error(`[${provider}] HTTP ${res.status} — URL: ${url} — Modelo: ${body.model}`);
+    console.error(`[${provider}] HTTP ${res.status} — URL: ${url}`);
     throw new Error(`${provider} HTTP ${res.status}: ${errorData?.error?.message || res.statusText}`);
   }
 
   const d = await res.json();
+
+  if (provider === 'gemini') {
+    if (d.error) throw new Error(`Gemini: ${d.error.message}`);
+    const text = d.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!text) throw new Error('Gemini devolvió respuesta vacía');
+    return text.trim();
+  }
+
   if (d.error) throw new Error(d.error.message || 'Error desconocido');
   return d.choices[0].message.content.trim();
 }
+
 
 
 

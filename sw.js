@@ -1,4 +1,4 @@
-const CACHE = 'asistente-v5';
+const CACHE = 'asistente-v6';
 const ASSETS = [
   '/asistente-voz/icon-192.png',
   '/asistente-voz/icon-512.png',

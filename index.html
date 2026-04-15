@@ -328,7 +328,7 @@ textarea { resize:vertical;min-height:80px;line-height:1.5;margin-bottom:0; }
     <div class="topbar-left">
       <span class="topbar-title">Configuración</span>
     </div>
-    <span style="font-size:12px;color:var(--muted);font-weight:500;">v0.1.6.2</span>
+    <span style="font-size:12px;color:var(--muted);font-weight:500;">v0.1.6.3</span>
     <button class="icon-btn" onclick="showScreen('chatScreen')" title="Volver">
       <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
     </button>
@@ -878,75 +878,85 @@ async function callProvider(provider) {
 }
 
 async function callAI(userMsg) {
-  // 1. Verificación de Internet
-  if (!navigator.onLine) {
-    throw new Error("Parece que no tengo internet ahora mismo.");
-  }
+  if (!navigator.onLine) throw new Error("Sin conexión a internet.");
 
-  const AI_PROVIDER = localStorage.getItem('ai_provider') || 'groq';
-  const groqKey = localStorage.getItem('groq_api_key');
-  const geminiKey = localStorage.getItem('gemini_api_key');
-  const openrouterKey = localStorage.getItem('openrouter_api_key');
-
-  // 2. Lógica de orden con OpenRouter incluido
-  const order = AI_PROVIDER === 'auto' 
+  const pref = ls('ai_provider') || 'auto';
+  
+  // 1. Definir el orden de reintento
+  const providersOrder = pref === 'auto' 
     ? ['groq', 'gemini', 'openrouter'] 
-    : [AI_PROVIDER, ...['groq', 'gemini', 'openrouter'].filter(p => p !== AI_PROVIDER)];
+    : [pref, ...['groq', 'gemini', 'openrouter'].filter(p => p !== pref)];
 
-  let lastError = null;
+  let lastError = "";
 
-  for (const provider of order) {
-    let url, model, headers;
-    
-    // Asignación de credenciales por proveedor
-    if (provider === 'gemini' && geminiKey) {
-      url = 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions?key=' + geminiKey;
-      model = 'gemini-1.5-flash';
-      headers = { "Content-Type": "application/json" }; // SIN Auth para evitar Error 400
-    } else if (provider === 'groq' && groqKey) {
+  for (const pID of providersOrder) {
+    const p = PROVIDERS[pID];
+    if (!p || !p.key || p.exhausted) continue;
+
+    let url, headers;
+    const bodyData = {
+      model: p.model,
+      messages: [
+        { role: "system", content: PERSONALITY },
+        ...history.slice(-6),
+        { role: "user", content: userMsg }
+      ]
+    };
+
+    // 2. Configuración específica por proveedor para evitar Errores 400
+    if (pID === 'gemini') {
+      url = `https://generativelanguage.googleapis.com/v1beta/openai/chat/completions?key=${p.key}`;
+      headers = { "Content-Type": "application/json" };
+      // Gemini a veces falla si el historial es impar o tiene roles repetidos, 
+      // pero con esta estructura limpia debería ir bien.
+    } else if (pID === 'groq') {
       url = 'https://api.groq.com/openai/v1/chat/completions';
-      model = 'llama-3.1-8b-instant';
-      headers = { "Content-Type": "application/json", "Authorization": "Bearer " + groqKey };
-    } else if (provider === 'openrouter' && openrouterKey) {
+      headers = { 
+        "Content-Type": "application/json", 
+        "Authorization": `Bearer ${p.key}` 
+      };
+    } else if (pID === 'openrouter') {
       url = 'https://openrouter.ai/api/v1/chat/completions';
-      model = 'google/gemini-flash-1.5'; 
-      headers = { "Content-Type": "application/json", "Authorization": "Bearer " + openrouterKey };
-    } else {
-      continue; // Saltar si no hay clave configurada para este proveedor
+      headers = { 
+        "Content-Type": "application/json", 
+        "Authorization": `Bearer ${p.key}` 
+      };
     }
 
     try {
       const resp = await fetch(url, {
         method: 'POST',
         headers: headers,
-        body: JSON.stringify({
-          model: model,
-          messages: [
-            { role: "system", content: "Sos Asistente, un asistente amigable para niños de Paraguay. Breve, máx 3 oraciones." },
-            ...history.slice(-6),
-            { role: "user", content: userMsg }
-          ]
-        })
+        body: JSON.stringify(bodyData)
       });
 
       if (!resp.ok) {
-        const errData = await resp.json().catch(() => ({}));
-        console.error(`Error en ${provider}:`, errData);
-        throw new Error(`Fallo ${provider}: ${resp.status}`);
+        const errorDetail = await resp.json().catch(() => ({}));
+        console.error(`Error en ${pID}:`, errorDetail);
+        
+        // Si el error es 401 (llave mal) o 429 (sin tokens), marcamos como agotado
+        if (resp.status === 401 || resp.status === 429) p.exhausted = true;
+        
+        throw new Error(`Fallo ${pID}: ${resp.status}`);
       }
 
       const data = await resp.json();
-      const aiText = data.choices[0].message.content;
-      history.push({ role: "user", content: userMsg }, { role: "assistant", content: aiText });
-      return aiText;
+      const text = data.choices[0].message.content;
+
+      // 3. Guardar en historial y persistencia
+      history.push({ role: "user", content: userMsg }, { role: "assistant", content: text });
+      lsSet('chat_history', JSON.stringify(history));
+      
+      return text;
 
     } catch (err) {
+      console.warn(`Saltando ${pID} por error:`, err.message);
       lastError = err.message;
-      continue; // Intenta con el siguiente si este falla
+      continue; // Intenta con el siguiente proveedor del ciclo 'for'
     }
   }
 
-  throw new Error(lastError || "No se pudo conectar con ninguna IA.");
+  throw new Error(lastError || "No hay proveedores disponibles o configurados.");
 }
 
 function handleApiError(err, addMsgFn, ttsFn) {

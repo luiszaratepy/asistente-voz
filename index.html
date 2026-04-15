@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>Asistente de Voz v0.1.1</title>
 <link rel="manifest" href="manifest.json">
 <meta name="mobile-web-app-capable" content="yes">
@@ -17,35 +17,54 @@
   --muted: #888888; --accent: #7F77DD; --accent-l: #EEEDFE;
   --green: #1D9E75; --red: #E24B4A;
 }
-body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: var(--bg); color: var(--text); height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
 
-/* Estilos de Ventanas */
-.window { position: fixed; inset: 0; background: var(--surface); z-index: 100; display: none; flex-direction: column; }
+/* Pantalla de Voz (Principal) */
+#voiceUI { position: fixed; inset: 0; background: #12121f; color: white; display: flex; flex-direction: column; z-index: 10; transition: transform 0.3s ease; }
+.v-header { padding: 20px; display: flex; justify-content: space-between; align-items: center; }
+.v-main { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; text-align: center; }
+.v-footer { padding: 30px; display: flex; justify-content: center; }
+
+/* El Círculo Animado */
+.orb { width: 150px; height: 150px; border-radius: 50%; background: var(--accent); position: relative; cursor: pointer; transition: all 0.3s ease; box-shadow: 0 0 30px rgba(127, 119, 221, 0.4); }
+.orb.listening { transform: scale(1.1); background: var(--green); box-shadow: 0 0 50px var(--green); animation: pulse 1.5s infinite; }
+.orb.thinking { background: var(--accent); animation: rotate 2s infinite linear; border: 4px dashed white; }
+
+@keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(29, 158, 117, 0.7); } 70% { box-shadow: 0 0 0 30px rgba(29, 158, 117, 0); } 100% { box-shadow: 0 0 0 0 rgba(29, 158, 117, 0); } }
+
+/* Ventanas Modales */
+.window { position: fixed; inset: 0; background: var(--surface); z-index: 100; display: none; flex-direction: column; color: var(--text); }
 .header { padding: 20px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
 .content { padding: 20px; overflow-y: auto; flex: 1; }
-
-/* Configuración */
 .config-group { margin-bottom: 20px; }
 .config-group label { display: block; font-size: 0.9rem; margin-bottom: 8px; font-weight: 600; }
 input, select { width: 100%; padding: 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 1rem; }
-input[type="range"] { accent-color: var(--accent); height: 8px; }
-
-.btn-save { width: 100%; padding: 15px; background: var(--accent); color: white; border: none; border-radius: 12px; font-weight: bold; font-size: 1rem; cursor: pointer; }
+.btn-save { width: 100%; padding: 15px; background: var(--accent); color: white; border: none; border-radius: 12px; font-weight: bold; cursor: pointer; }
 .version-tag { text-align: center; color: var(--muted); font-size: 0.75rem; margin-top: 20px; }
-
-/* Pantalla de Voz (Simplificada para el ejemplo) */
-#voiceUI { display: flex; background: #12121f; color: white; }
-.status-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--muted); margin-right: 8px; }
-.status-active { background: var(--green); box-shadow: 0 0 10px var(--green); }
 </style>
 </head>
 <body>
 
-<div style="padding: 20px;">
-  <button onclick="toggleWin('configWin')" style="padding: 10px 20px; border-radius: 8px; border: 1px solid var(--border);">⚙️ Configuración</button>
+<div id="voiceUI">
+  <div class="v-header">
+    <div id="statusLabel" style="display: flex; align-items: center; font-size: 0.9rem;">
+      <span class="status-dot" id="dot"></span> <span id="statusTxt">Listo</span>
+    </div>
+    <button onclick="toggleWin('configWin')" style="background:none; border:none; color:white; font-size:1.2rem;">⚙️</button>
+  </div>
+  
+  <div class="v-main">
+    <div id="transcript" style="margin-bottom: 20px; min-height: 1.5em; color: var(--muted);">Toca el círculo para hablar...</div>
+    <div id="orb" class="orb" onclick="startRecognition()"></div>
+    <div id="aiResponse" style="margin-top: 30px; font-size: 1.1rem; line-height: 1.4; padding: 0 10px;"></div>
+  </div>
+
+  <div class="v-footer">
+    <button onclick="window.speechSynthesis.cancel()" style="background:rgba(255,255,255,0.1); border:none; color:white; padding:10px 20px; border-radius:20px;">Detener Voz</button>
+  </div>
 </div>
 
-<div id="configWin" class="window" style="display: flex;">
+<div id="configWin" class="window">
   <div class="header">
     <h2>Configuración</h2>
     <button onclick="toggleWin('configWin')" style="background:none; border:none; font-size:1.5rem;">✕</button>
@@ -55,17 +74,14 @@ input[type="range"] { accent-color: var(--accent); height: 8px; }
       <label>API Key de Groq:</label>
       <input type="password" id="apiKeyInput" placeholder="gsk_...">
     </div>
-    
     <div class="config-group">
       <label>Voz del Asistente:</label>
       <select id="voiceSel"></select>
     </div>
-
     <div class="config-group">
-      <label id="silenceLabel">Tiempo de espera para hablar: 1.5s</label>
+      <label id="silenceLabel">Tiempo de espera: 1.5s</label>
       <input type="range" id="silenceSlider" min="500" max="5000" step="100" value="1500" oninput="updateSilenceLabel(this.value)">
     </div>
-
     <button class="btn-save" onclick="saveConfig()">Guardar Cambios</button>
     <p class="version-tag">Versión v0.1.1</p>
   </div>
@@ -74,120 +90,129 @@ input[type="range"] { accent-color: var(--accent); height: 8px; }
 <script>
 let SILENCE_TIMEOUT = 1500;
 let history = [];
+let recognition;
 
+// --- Funciones de Interfaz ---
 function toggleWin(id) {
   const win = document.getElementById(id);
-  win.style.display = win.style.display === 'none' ? 'flex' : 'none';
+  win.style.display = (win.style.display === 'none' || win.style.display === '') ? 'flex' : 'none';
 }
 
 function updateSilenceLabel(val) {
-  document.getElementById('silenceLabel').innerText = `Tiempo de espera para hablar: ${(val/1000).toFixed(1)}s`;
+  document.getElementById('silenceLabel').innerText = `Tiempo de espera: ${(val/1000).toFixed(1)}s`;
 }
 
-// --- MEJORA: Resiliencia de Voces ---
-function populateVoices() {
-  const sel = document.getElementById('voiceSel');
-  if (!sel) return;
-  const voices = window.speechSynthesis.getVoices();
-  const current = localStorage.getItem('selected_voice');
+// --- Reconocimiento de Voz ---
+function startRecognition() {
+  const Speech = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!Speech) return alert("Tu navegador no soporta reconocimiento de voz.");
+
+  recognition = new Speech();
+  recognition.lang = 'es-PY';
+  recognition.continuous = false;
+
+  recognition.onstart = () => {
+    document.getElementById('orb').className = 'orb listening';
+    document.getElementById('statusTxt').innerText = "Escuchando...";
+  };
+
+  recognition.onresult = (e) => {
+    const text = e.results[0][0].transcript;
+    document.getElementById('transcript').innerText = text;
+    processQuery(text);
+  };
+
+  recognition.onerror = () => {
+    document.getElementById('orb').className = 'orb';
+    document.getElementById('statusTxt').innerText = "Error";
+  };
+
+  recognition.onend = () => {
+    if (document.getElementById('orb').className !== 'orb thinking') {
+      document.getElementById('orb').className = 'orb';
+      document.getElementById('statusTxt').innerText = "Listo";
+    }
+  };
+
+  recognition.start();
+}
+
+async function processQuery(text) {
+  document.getElementById('orb').className = 'orb thinking';
+  document.getElementById('statusTxt').innerText = "Pensando...";
   
-  sel.innerHTML = voices
-    .filter(v => v.lang.includes('es'))
-    .map(v => `<option value="${v.name}" ${v.name === current ? 'selected' : ''}>${v.name}</option>`)
-    .join('');
+  try {
+    const aiText = await callGroq(text);
+    document.getElementById('aiResponse').innerText = aiText;
+    tts(aiText);
+  } catch (err) {
+    document.getElementById('aiResponse').innerText = err.message;
+  } finally {
+    document.getElementById('orb').className = 'orb';
+    document.getElementById('statusTxt').innerText = "Listo";
+  }
 }
 
-if (window.speechSynthesis) {
-  window.speechSynthesis.onvoiceschanged = populateVoices;
-  // Intento inmediato para navegadores rápidos
-  setTimeout(populateVoices, 100);
+// --- Lógica de API y TTS (Mejoras v0.1.1) ---
+async function callGroq(userMsg) {
+  const apiKey = localStorage.getItem('groq_api_key');
+  if (!apiKey) throw new Error("Configurá tu API Key en el menú ⚙️");
+  if (!navigator.onLine) throw new Error("Sin internet. Revisá tu conexión.");
+
+  const resp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: "llama-3.1-8b-instant",
+      messages: [
+        { role: "system", content: "Sos Asistente, un asistente amigable para niños de Paraguay. Hablás en español paraguayo simple. Respondés brevemente (máx 3 oraciones)." },
+        ...history.slice(-4),
+        { role: "user", content: userMsg }
+      ]
+    })
+  });
+
+  if (resp.status === 429) throw new Error("¡Se acabaron los tokens! Hablamos más tarde.");
+  if (!resp.ok) throw new Error("Error en el cerebro de la IA.");
+
+  const data = await resp.json();
+  const res = data.choices[0].message.content;
+  history.push({ role: "user", content: userMsg }, { role: "assistant", content: res });
+  return res;
 }
 
-// --- MEJORA: TTS Filtrado para Niños ---
 function tts(text) {
-  if (!window.speechSynthesis) return;
-  
-  // Limpieza de Markdown y símbolos técnicos
-  const cleanText = text
-    .replace(/\*\*/g, '') 
-    .replace(/[*_`#>]/g, '')
-    .replace(/- /g, ' ') 
-    .replace(/\n/g, '. ') 
-    .trim();
-
+  const cleanText = text.replace(/[*_`#>]/g, '').replace(/\n/g, '. ').trim();
   window.speechSynthesis.cancel();
   const utt = new SpeechSynthesisUtterance(cleanText);
-  const voices = window.speechSynthesis.getVoices();
-  const voiceName = localStorage.getItem('selected_voice');
-  const v = voices.find(v => v.name === voiceName);
+  const v = window.speechSynthesis.getVoices().find(v => v.name === localStorage.getItem('selected_voice'));
   if (v) utt.voice = v;
-  
-  utt.rate = 0.95; // Un poco más lento para niños
+  utt.rate = 0.95;
   window.speechSynthesis.speak(utt);
 }
 
-// --- MEJORA: Manejo de Errores y Tokens ---
-async function callGroq(userMsg) {
-  const apiKey = localStorage.getItem('groq_api_key');
-  if (!apiKey) { alert("Configura tu API Key primero."); return; }
-
-  if (!navigator.onLine) {
-    tts("Lo siento, parece que no tengo internet ahora mismo. ¿Podés revisar tu conexión?");
-    return;
-  }
-
-  try {
-    const resp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-      method: "POST",
-      headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: "llama-3.1-8b-instant",
-        messages: [
-          { role: "system", content: "Sos Asistente, un asistente amigable y paciente para niños de Paraguay. Hablás en español paraguayo de forma simple y divertida. Explicás con ejemplos cotidianos, sos entusiasta y alentador. Nunca usás lenguaje adulto ni contenido inapropiado. Respondés siempre brevemente, máximo 3 oraciones." },
-          ...history,
-          { role: "user", content: userMsg }
-        ]
-      })
-    });
-
-    if (resp.status === 429) {
-      tts("¡Qué pena! Se me acabaron las pilas por hoy. Vamos a descansar y hablamos más tarde, ¿sí?");
-      return;
-    }
-
-    if (!resp.ok) throw new Error();
-
-    const data = await resp.json();
-    const aiMsg = data.choices[0].message.content;
-    history.push({ role: "assistant", content: aiMsg });
-    tts(aiMsg);
-  } catch (err) {
-    tts("Huy, me dio un pequeño dolor de cabeza. ¿Podés intentar decirme eso de nuevo?");
-  }
+// --- Inicialización y Voces ---
+function populateVoices() {
+  const sel = document.getElementById('voiceSel');
+  const voices = window.speechSynthesis.getVoices();
+  const current = localStorage.getItem('selected_voice');
+  sel.innerHTML = voices.filter(v => v.lang.includes('es')).map(v => `<option value="${v.name}" ${v.name === current ? 'selected' : ''}>${v.name}</option>`).join('');
 }
 
 function saveConfig() {
-  const key = document.getElementById('apiKeyInput').value.trim();
-  const voice = document.getElementById('voiceSel').value;
-  const sil = document.getElementById('silenceSlider').value;
-
-  if (key) localStorage.setItem('groq_api_key', key);
-  localStorage.setItem('selected_voice', voice);
-  localStorage.setItem('silence_timeout', sil);
-  SILENCE_TIMEOUT = parseInt(sil);
-  
-  alert("Configuración guardada correctamente");
+  localStorage.setItem('groq_api_key', document.getElementById('apiKeyInput').value.trim());
+  localStorage.setItem('selected_voice', document.getElementById('voiceSel').value);
+  localStorage.setItem('silence_timeout', document.getElementById('silenceSlider').value);
+  alert("¡Guardado!");
   toggleWin('configWin');
 }
 
-// Carga inicial
+window.speechSynthesis.onvoiceschanged = populateVoices;
 window.onload = () => {
-  const savedSil = localStorage.getItem('silence_timeout');
-  if (savedSil) {
-    SILENCE_TIMEOUT = parseInt(savedSil);
-    document.getElementById('silenceSlider').value = savedSil;
-    updateSilenceLabel(savedSil);
-  }
+  const s = localStorage.getItem('silence_timeout') || 1500;
+  document.getElementById('silenceSlider').value = s;
+  updateSilenceLabel(s);
+  setTimeout(populateVoices, 500);
 };
 </script>
 </body>

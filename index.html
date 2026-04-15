@@ -328,7 +328,7 @@ textarea { resize:vertical;min-height:80px;line-height:1.5;margin-bottom:0; }
     <div class="topbar-left">
       <span class="topbar-title">Configuración</span>
     </div>
-    <span style="font-size:12px;color:var(--muted);font-weight:500;">v0.1.6</span>
+    <span style="font-size:12px;color:var(--muted);font-weight:500;">v0.1.6.2</span>
     <button class="icon-btn" onclick="showScreen('chatScreen')" title="Volver">
       <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
     </button>
@@ -813,6 +813,7 @@ function sendText() {
 // ════════════════════════════════════════════════════
 //  LLAMADA A LA API — multi-proveedor con fallback
 // ════════════════════════════════════════════════════
+
 async function callProvider(provider) {
   const p = PROVIDERS[provider];
   if (!p.key) throw new Error('NO_KEY');
@@ -820,17 +821,17 @@ async function callProvider(provider) {
   let url, headers, body;
 
   if (provider === 'gemini') {
-    // API nativa de Gemini - no usa formato OpenAI
-    url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${p.key}`;
+    // Modelo actualizado: usar 'gemini-2.0-flash' o 'gemini-1.5-flash-latest'
+    // gemini-1.5-flash sin 'latest' fue deprecado
+    const geminiModel = p.model || 'gemini-2.0-flash'; // o 'gemini-1.5-flash-latest'
+    url = `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${p.key}`;
     headers = { 'Content-Type': 'application/json' };
 
-    // Gemini no tiene rol "system". Lo metemos como primer mensaje del user + model
-    // y los roles "assistant" pasan a ser "model"
     const systemPrompt = buildSystem();
     const geminiHistory = [
       { role: 'user', parts: [{ text: systemPrompt }] },
-      { role: 'model', parts: [{ text: 'Entendido. Soy tu asistente.' }] },
-     ...history.map(m => ({
+      { role: 'model', parts: [{ text: 'Ok, entendido.' }] },
+    ...history.map(m => ({
         role: m.role === 'assistant'? 'model' : 'user',
         parts: [{ text: m.content }]
       }))
@@ -857,7 +858,7 @@ async function callProvider(provider) {
     headers = {
       'Content-Type': 'application/json',
       'Authorization': 'Bearer ' + p.key,
-      'HTTP-Referer': 'https://asistente-voz.local', // OpenRouter lo pide
+      'HTTP-Referer': 'https://asistente-voz.local',
       'X-Title': 'Asistente de Voz'
     };
     body = {
@@ -875,23 +876,22 @@ async function callProvider(provider) {
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({}));
     console.error('Detalle del error:', errorData);
-    console.error(`[${provider}] HTTP ${res.status} — URL: ${url} — Modelo: ${body.model || 'gemini-1.5-flash'}`);
+    console.error(`[${provider}] HTTP ${res.status} — URL: ${url}`);
     throw new Error(`${provider} HTTP ${res.status}: ${errorData?.error?.message || res.statusText}`);
   }
 
   const d = await res.json();
 
-  // Respuesta de Gemini nativo tiene estructura distinta
   if (provider === 'gemini') {
     if (d.error) throw new Error(d.error.message || 'Error desconocido');
     if (!d.candidates ||!d.candidates[0]) throw new Error('Respuesta vacía de Gemini');
     return d.candidates[0].content.parts[0].text.trim();
   }
 
-  // Groq y OpenRouter usan formato OpenAI
   if (d.error) throw new Error(d.error.message || 'Error desconocido');
   return d.choices[0].message.content.trim();
 }
+
 
 async function callAI() {
   if (!navigator.onLine) throw new Error('SIN_INTERNET');

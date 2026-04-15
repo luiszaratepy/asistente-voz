@@ -376,7 +376,7 @@ textarea { resize:vertical;min-height:80px;line-height:1.5;margin-bottom:0; }
     <div class="topbar-left">
       <span class="topbar-title">Configuración</span>
     </div>
-    <span style="font-size:12px;color:var(--muted);font-weight:500;">v0.1.2</span>
+    <span style="font-size:12px;color:var(--muted);font-weight:500;">v0.1.3</span>
     <button class="icon-btn" onclick="showScreen('chatScreen')" title="Volver">
       <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
     </button>
@@ -645,39 +645,59 @@ function defPersonality() {
 }
 
 window.addEventListener('DOMContentLoaded', () => {
-  API_KEY     = ls('groq_key')    || DEFAULT_KEY;
-  MODEL       = ls('groq_model')  || 'llama-3.3-70b-versatile';
-  LANG        = ls('groq_lang')   || 'es-PY';
-  VOICE_NAME  = ls('voice_name')  || '';
-  SILENCE_MS  = parseInt(ls('silence_ms') || '1500');
-  const sldr = document.getElementById('silenceSlider');
-  if (sldr) {
-    sldr.value = SILENCE_MS;
-    document.getElementById('silenceVal').textContent = (SILENCE_MS/1000).toFixed(1) + 's';
-  }
+  // ── Identidad ──────────────────────────────────────
   AI_NAME     = ls('ai_name')     || 'Asistente';
   USER_NAME   = ls('user_name')   || '';
   PERSONALITY = ls('personality') || defPersonality();
   memories    = JSON.parse(ls('memories') || '[]');
   resumen     = ls('resumen') || '';
 
-  // cargar historial guardado
+  document.getElementById('aiName').value      = AI_NAME;
+  document.getElementById('userName').value    = USER_NAME;
+  document.getElementById('personality').value = PERSONALITY;
+
+  // ── Proveedores ────────────────────────────────────
+  PROVIDERS.groq.key          = ls('groq_key')          || '';
+  PROVIDERS.groq.model        = ls('groq_model')        || 'llama-3.1-8b-instant';
+  PROVIDERS.gemini.key        = ls('gemini_key')        || '';
+  PROVIDERS.gemini.model      = ls('gemini_model')      || 'gemini-1.5-flash-8b';
+  PROVIDERS.openrouter.key    = ls('openrouter_key')    || '';
+  PROVIDERS.openrouter.model  = ls('openrouter_model')  || 'meta-llama/llama-3.2-3b-instruct:free';
+  PROVIDER_PREF               = ls('provider_pref')     || 'auto';
+
+  document.getElementById('groqKey').value          = PROVIDERS.groq.key;
+  document.getElementById('groqModel').value         = PROVIDERS.groq.model;
+  document.getElementById('geminiKey').value         = PROVIDERS.gemini.key;
+  document.getElementById('geminiModel').value       = PROVIDERS.gemini.model;
+  document.getElementById('openrouterKey').value     = PROVIDERS.openrouter.key;
+  document.getElementById('openrouterModel').value   = PROVIDERS.openrouter.model;
+  document.getElementById('providerPref').value      = PROVIDER_PREF;
+
+  // ── Voz e idioma ───────────────────────────────────
+  LANG        = ls('groq_lang')   || 'es-PY';
+  VOICE_NAME  = ls('voice_name')  || '';
+  SILENCE_MS  = parseInt(ls('silence_ms') || '1500');
+
+  document.getElementById('langSel').value = LANG;
+
+  const sldr = document.getElementById('silenceSlider');
+  if (sldr) {
+    sldr.value = SILENCE_MS;
+    document.getElementById('silenceVal').textContent = (SILENCE_MS/1000).toFixed(1) + 's';
+  }
+
+  // ── Historial ──────────────────────────────────────
   const savedHistory = JSON.parse(ls('chat_history') || '[]');
   if (savedHistory.length) {
     history = savedHistory;
     renderSavedHistory();
   }
 
-  document.getElementById('apiKey').value      = API_KEY;
-  document.getElementById('modelSel').value    = MODEL;
-  document.getElementById('langSel').value     = LANG;
-  document.getElementById('aiName').value      = AI_NAME;
-  document.getElementById('userName').value    = USER_NAME;
-  document.getElementById('personality').value = PERSONALITY;
-
-  if (API_KEY.startsWith('gsk_')) setBadge(true);
+  // ── Activar proveedor y UI ─────────────────────────
+  selectActiveProvider();
+  updateHeader();
+  updateMemCount();
   populateVoices();
-  updateHeader(); updateMemCount();
   window.speechSynthesis?.getVoices();
 });
 

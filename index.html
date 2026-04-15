@@ -328,7 +328,7 @@ textarea { resize:vertical;min-height:80px;line-height:1.5;margin-bottom:0; }
     <div class="topbar-left">
       <span class="topbar-title">Configuración</span>
     </div>
-    <span style="font-size:12px;color:var(--muted);font-weight:500;">v0.1.6</span>
+    <span style="font-size:12px;color:var(--muted);font-weight:500;">v0.1.6.1</span>
     <button class="icon-btn" onclick="showScreen('chatScreen')" title="Volver">
       <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
     </button>
@@ -865,33 +865,76 @@ async function callProvider(provider) {
   return d.choices[0].message.content.trim();
 }
 
-async function callAI() {
-  if (!navigator.onLine) throw new Error('SIN_INTERNET');
+async function callAI(userMsg) {
+  // 1. Verificación de Internet
+  if (!navigator.onLine) {
+    throw new Error("Parece que no tengo internet ahora mismo.");
+  }
 
-  const order = AI_PROVIDER === 'auto'
-    ? ['groq','gemini','openrouter']
-    : [AI_PROVIDER, ...['groq','gemini','openrouter'].filter(p => p !== AI_PROVIDER)];
+  const AI_PROVIDER = localStorage.getItem('ai_provider') || 'groq';
+  const groqKey = localStorage.getItem('groq_api_key');
+  const geminiKey = localStorage.getItem('gemini_api_key');
+  const openrouterKey = localStorage.getItem('openrouter_api_key');
 
-  const available = order.filter(p => PROVIDERS[p].key && !PROVIDERS[p].exhausted);
-  if (!available.length) throw new Error('ALL_EXHAUSTED');
+  // 2. Lógica de orden con OpenRouter incluido
+  const order = AI_PROVIDER === 'auto' 
+    ? ['groq', 'gemini', 'openrouter'] 
+    : [AI_PROVIDER, ...['groq', 'gemini', 'openrouter'].filter(p => p !== AI_PROVIDER)];
 
-  for (const provider of available) {
+  let lastError = null;
+
+  for (const provider of order) {
+    let url, model, headers;
+    
+    // Asignación de credenciales por proveedor
+    if (provider === 'gemini' && geminiKey) {
+      url = 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions?key=' + geminiKey;
+      model = 'gemini-1.5-flash';
+      headers = { "Content-Type": "application/json" }; // SIN Auth para evitar Error 400
+    } else if (provider === 'groq' && groqKey) {
+      url = 'https://api.groq.com/openai/v1/chat/completions';
+      model = 'llama-3.1-8b-instant';
+      headers = { "Content-Type": "application/json", "Authorization": "Bearer " + groqKey };
+    } else if (provider === 'openrouter' && openrouterKey) {
+      url = 'https://openrouter.ai/api/v1/chat/completions';
+      model = 'google/gemini-flash-1.5'; 
+      headers = { "Content-Type": "application/json", "Authorization": "Bearer " + openrouterKey };
+    } else {
+      continue; // Saltar si no hay clave configurada para este proveedor
+    }
+
     try {
-      const reply = await callProvider(provider);
-      ACTIVE_PROVIDER = provider;
-      selectActiveProvider();
-      return reply;
-    } catch(err) {
-      if (err.message === 'RATE_LIMIT') {
-        console.warn(`[${provider}] tokens agotados — intentando siguiente...`);
-        PROVIDERS[provider].exhausted = true;
-        selectActiveProvider();
-        continue;
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: headers,
+        body: JSON.stringify({
+          model: model,
+          messages: [
+            { role: "system", content: "Sos Asistente, un asistente amigable para niños de Paraguay. Breve, máx 3 oraciones." },
+            ...history.slice(-6),
+            { role: "user", content: userMsg }
+          ]
+        })
+      });
+
+      if (!resp.ok) {
+        const errData = await resp.json().catch(() => ({}));
+        console.error(`Error en ${provider}:`, errData);
+        throw new Error(`Fallo ${provider}: ${resp.status}`);
       }
-      throw err;
+
+      const data = await resp.json();
+      const aiText = data.choices[0].message.content;
+      history.push({ role: "user", content: userMsg }, { role: "assistant", content: aiText });
+      return aiText;
+
+    } catch (err) {
+      lastError = err.message;
+      continue; // Intenta con el siguiente si este falla
     }
   }
-  throw new Error('ALL_EXHAUSTED');
+
+  throw new Error(lastError || "No se pudo conectar con ninguna IA.");
 }
 
 function handleApiError(err, addMsgFn, ttsFn) {
